@@ -57,6 +57,9 @@ defmodule Phoenix.Endpoint.CowboyWebSocket do
 
   def websocket_init(_transport, req, {handler, args}) do
     {:ok, state, timeout} = handler.ws_init(args)
+    metrics_mod = get_metrics_module()
+    metrics_mod.increment_counter([:phoenix, :total_ws_connetions])
+    metrics_mod.increment_counter([:phoenix, :open_ws_connetions])
     {:ok, :cowboy_req.compact(req), {handler, state}, timeout}
   end
 
@@ -76,6 +79,9 @@ defmodule Phoenix.Endpoint.CowboyWebSocket do
 
   def websocket_terminate({:error, :closed}, _req, {handler, state}) do
     handler.ws_close(state)
+    metrics_mod = get_metrics_module()
+    metrics_mod.decrement_counter([:phoenix, :total_ws_connetions])
+    metrics_mod.increment_counter([:phoenix, :closed_ws_connetions])
     :ok
   end
   def websocket_terminate({:remote, :closed}, _req, {handler, state}) do
@@ -85,10 +91,16 @@ defmodule Phoenix.Endpoint.CowboyWebSocket do
   def websocket_terminate({:remote, code, _}, _req, {handler, state})
       when code in 1000..1003 or code in 1005..1011 or code == 1015 do
     handler.ws_close(state)
+    metrics_mod = get_metrics_module()
+    metrics_mod.decrement_counter([:phoenix, :total_ws_connetions])
+    metrics_mod.increment_counter([:phoenix, :closed_ws_connetions])
     :ok
   end
   def websocket_terminate(reason, _req, {handler, state}) do
     handler.ws_terminate(reason, state)
+    metrics_mod = get_metrics_module()
+    metrics_mod.decrement_counter([:phoenix, :total_ws_connetions])
+    metrics_mod.increment_counter([:phoenix, :closed_ws_connetions])
     :ok
   end
 
@@ -100,5 +112,9 @@ defmodule Phoenix.Endpoint.CowboyWebSocket do
   end
   defp handle_reply(req, handler, {:reply, {opcode, payload}, new_state}) do
     {:reply, {opcode, payload}, req, {handler, new_state}}
+  end
+
+  def get_metrics_module() do
+    Application.get_env(:phoenix, :mod_metrics, Phoenix.Metrics.Dummy)
   end
 end

@@ -18,10 +18,13 @@ defmodule Phoenix.Channel.Server do
   @spec join(Socket.t, map) :: {:ok, map, pid} | {:error, map}
   def join(socket, auth_payload) do
     ref = make_ref()
-
     case GenServer.start_link(__MODULE__, {socket, auth_payload, self(), ref}) do
       {:ok, pid} ->
-        receive do: ({^ref, reply} -> {:ok, reply, pid})
+        receive do: ({^ref, reply} -> 
+        metrics_mod = get_metrics_module()
+        metrics_mod.increment_counter([:phoenix, :total_channels])
+        metrics_mod.increment_counter([:phoenix, :open_channels])
+        {:ok, reply, pid})
       :ignore ->
         receive do: ({^ref, reply} -> {:error, reply})
       {:error, reason} ->
@@ -42,6 +45,9 @@ defmodule Phoenix.Channel.Server do
     # crash.
     ref = Process.monitor(pid)
     GenServer.cast(pid, :close)
+    metrics_mod = get_metrics_module()
+    metrics_mod.decrement_counter([:phoenix, :open_channels])
+    metrics_mod.decrement_counter([:phoenix, :closed_channels])
     receive do
       {:DOWN, ^ref, _, _, _} -> :ok
     after
@@ -311,5 +317,9 @@ defmodule Phoenix.Channel.Server do
     Channel replies can only be sent from a `handle_in/3` callback.
     Use `push/3` to send an out-of-band message down the socket
     """
+  end
+
+  defp get_metrics_module() do
+    Application.get_env(:phoenix, :mod_metrics, Phoenix.Metrics.Dummy)
   end
 end

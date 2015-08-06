@@ -62,6 +62,9 @@ defmodule Phoenix.Transports.LongPoll.Server do
         if socket.id, do: socket.endpoint.subscribe(self, socket.id, link: true)
         :ok = PubSub.subscribe(state.pubsub_server, self, priv_topic, link: true)
         :timer.send_interval(state.window_ms, :shutdown_if_inactive)
+        metrics_mod = get_metrics_module()
+        metrics_mod.increment_counter([:phoenix, :total_longpoll_connetions])
+        metrics_mod.increment_counter([:phoenix, :open_long_connetions])
 
         {:ok, state}
       :error ->
@@ -140,6 +143,9 @@ defmodule Phoenix.Transports.LongPoll.Server do
   end
 
   def terminate(_reason, _state) do
+    metrics_mod = get_metrics_module()
+    metrics_mod.decrement_counter([:phoenix, :total_longpoll_connetions])
+    metrics_mod.increment_counter([:phoenix, :closed_long_connetions])
     :ok
   end
 
@@ -164,4 +170,8 @@ defmodule Phoenix.Transports.LongPoll.Server do
   defp time_to_ms({mega, sec, micro}),
     do: div(((((mega * 1000000) + sec) * 1000000) + micro), 1000)
   defp now_ms, do: :os.timestamp() |> time_to_ms()
+
+  defp get_metrics_module() do
+    Application.get_env(:phoenix, :mod_metrics, Phoenix.Metrics.Dummy)
+  end
 end
